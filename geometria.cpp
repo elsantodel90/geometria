@@ -178,52 +178,74 @@ pair<pto,pto> interseccion(const circulo &c1, const circulo &c2){ // Asume que s
     return c1.interseccion(linea::por(c1.c, c2.c).normalPor(c1.c + mult*(c2.c-c1.c)));
 }
 
-typedef vector<pto> poligono;
-
-escalar areaPor2(const poligono& pol){ //El doble del area, con signo!!! Positiva para poligonos antihorarios.
-    escalar res = 0;
-    for(int i = 0, j = pol.size() -1; i < (int)pol.size(); j = i++)
-        res += pol[j]^pol[i];
-    return res;
-}
-
-floating ancho(const poligono& pol){ // pol convexo y antihorario. Algoritmo lineal: encuentra para cada lado, el vertice mas lejano
-    int n = pol.size();
-    if(n < 3) return 0; // No se banca degenerados (todos alineados) con n > 2
-    floating res = HUGE_VAL;
-    for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
-        segmento base(pol[a], pol[b]); pto v = base.recta().d;
-        while((v^(pol[cand]-pol[far])) >= 0) {far = cand++; cand %= n;}
-        res = min(res,  base.recta().dist(pol[far]));
-    }
-    return res;
-}
-
-escalar diameterSqr(const poligono& pol){ //poligono convexo y antihorario. Maxima distancia entre vertices en tiempo lineal.
-    int n = poly.size();
-    if (n < 2) return 0;
-    if (n == 2) return distSqr(pol[0],pol[1]); // No se banca degenerados (todos alineados) con n > 2
-    int i1 = 0, ii1 = n-1, i2 = 1, ii2 = 0;
-    escalar res = 0;
-    for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
-        pto v = pol[b] - pol[a];
-        while((v^(pol[cand]-pol[far])) >= 0){
-            res = max(res, distSqr(pol[a], pol[far])); 
-            far = cand++; cand %= n; 
+struct poligono
+{
+    vector<pto> v;
+    int n;
+    poligono() : n(0) {}
+    poligono(const vector<pto> &vv) : v(vv), n(vv.size()) {}
+    void push(const pto &p) { v.push_back(p); n++; }
+    void pop(const pto &p) { v.pop_back(); n--; }
+    escalar areaPor2ConSigno() const {
+        escalar res = 0;
+        for(int i = 0, j = n-1; i < n; j = i++) res += v[j]^v[i];
+        return res;
+    }    
+    escalar areaPor2() const { return abs(areaPor2ConSigno()); }
+    bool antihorario() const { return areaPor2ConSigno() > 0; }
+    floating ancho() const { // pol convexo y antihorario. Algoritmo lineal: encuentra para cada lado, el vertice mas lejano
+        if(n < 3) return 0; // No se banca degenerados (todos alineados) con n > 2 (loop infinito)
+        floating res = HUGE_VAL;
+        for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
+            while(((v[b]-v[a])^(v[cand]-v[far])) >= 0) {far = cand++; cand %= n;}
+            res = min(res, linea::por(v[a], v[b]).dist(pol[far]));
         }
-        res = max(res, distSqr(pol[a], pol[far]));
+        return res;
     }
-    return res;
-}
+    escalar diameterSqr() const { //poligono convexo y antihorario. Maxima distancia entre vertices en tiempo lineal.
+        if (n < 2) return 0;
+        if (n == 2) return distSqr(v[0],v[1]); // No se banca degenerados (todos alineados) con n > 2 (loop infinito)
+        escalar res = 0;
+        for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
+            while(((v[b] - v[a])^(v[cand]-v[far])) >= 0){
+                res = max(res, distSqr(v[a], v[far])); 
+                far = cand++; cand %= n; 
+            }
+            res = max(res, distSqr(v[a], v[far]));
+        }
+        return res;
+    }
+    bool isconvex() const { // n >= 3
+        bool mayor = false, menor = false;
+        for(int i = n-1, prev = n-2, next = 0; next < n; prev = i, i = next++) {
+            escalar giro = (v[next]-v[i])^(v[prev]-v[i]);
+            mayor |= giro > 0; menor |= giro < 0;
+        }
+        return !(mayor && menor);
+    }
+};
 
-bool isconvex(poligono& pol){ // n >= 3
-    bool mayor = false, menor = false;
-    int n = poly.size();
-    for(int i = n-1, prev = n-2, next = 0; next < n; prev = i, i = next++) {
-        escalar giro = (poly[next]-poly[i])^(poly[prev]-poly[i]);
-        mayor |= giro > 0; menor |= giro < 0;
-    }
-    return !(mayor && menor);
+
+// CHULL
+
+pto chull_r;
+bool menorEnYluegoEnX(const pto &p1, const pto &p2){
+  return (p1.y==p2.y)?(p1.x<p2.x):(p1.y<p2.y);
+}
+bool menorGrahamScan(const pto &p1,const pto &p2){
+  tipo ar = (p1-r)^(p2-r);
+  return(ar==0)?(dist2(p1,r)<dist2(p2,r)):ar>0;
+}
+poligono chull(vector<pto> v) { // Devuelve la chull, sin puntos alineados, en sentido antihorario. Asume puntos distintos.
+  if(v.size()<3) return pol;
+  chull_r = *(min_element(v.begin(),v.end(),menorEnYluegoEnX));
+  sort(v.begin(),v.end(), menorGrahamScan);
+  int i=0, s; poligono ch;
+  while(i<(int)v.size()){
+    if(ch.n>1 && ((ch.v[ch.n-1]-ch.v[ch.n-2])^(v[i]-ch.v[ch.n-2]))<=0) ch.pop();
+    else ch.push(v[i++]);
+  }
+  return ch;
 }
 
 // FIN DE CODIGO DE NOTEBOOK
