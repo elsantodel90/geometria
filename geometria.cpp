@@ -187,14 +187,31 @@ escalar areaPor2(const poligono& pol){ //El doble del area, con signo!!! Positiv
     return res;
 }
 
-floating ancho(poligono& pol){ // pol convexo y antihorario. Algoritmo lineal: encuentra para cada lado, el vertice mas lejano.
+floating ancho(const poligono& pol){ // pol convexo y antihorario. Algoritmo lineal: encuentra para cada lado, el vertice mas lejano
     int n = pol.size();
-    if(n < 3) return 0;
+    if(n < 3) return 0; // No se banca degenerados (todos alineados) con n > 2
     floating res = HUGE_VAL;
     for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
         segmento base(pol[a], pol[b]); pto v = base.recta().d;
         while((v^(pol[cand]-pol[far])) >= 0) {far = cand++; cand %= n;}
         res = min(res,  base.recta().dist(pol[far]));
+    }
+    return res;
+}
+
+escalar diameterSqr(const poligono& pol){ //poligono convexo y antihorario. Maxima distancia entre vertices en tiempo lineal.
+    int n = poly.size();
+    if (n < 2) return 0;
+    if (n == 2) return distSqr(pol[0],pol[1]); // No se banca degenerados (todos alineados) con n > 2
+    int i1 = 0, ii1 = n-1, i2 = 1, ii2 = 0;
+    escalar res = 0;
+    for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
+        pto v = pol[b] - pol[a];
+        while((v^(pol[cand]-pol[far])) >= 0){
+            res = max(res, distSqr(pol[a], pol[far])); 
+            far = cand++; cand %= n; 
+        }
+        res = max(res, distSqr(pol[a], pol[far]));
     }
     return res;
 }
