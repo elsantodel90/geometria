@@ -5,13 +5,14 @@ using namespace std;
 
 // INICIO DE CODIGO DE NOTEBOOK
 
+typedef long long escalar; // Escalar, puede ser de punto flotante, o tambien entero cuando los puntos y operaciones que hagamos nos mantienen en enteros.
+typedef long double floating; // Se usa para marcar que estas operaciones si o si utilizan/devuelven numeros de punto flotante, no enteros.
+
+const escalar INF = 0x7FFFFFFFFFFFFFFFLL;
 const floating epsilon = 1e-9;
 #define feq(a,b) (fabs((a)-(b)) < epsilon) // Se puede cambiar (cuando aplica) por la igualdad exacta si se usan operaciones en enteros.
                                            // Asi como esta deberia producir codigo que funciona igualmente 
                                            // (aunque se pasa a float para hacer la cuenta con epsilon al pedo).
-
-typedef long long escalar; // Escalar, puede ser de punto flotante, o tambien entero cuando los puntos y operaciones que hagamos nos mantienen en enteros.
-typedef long double floating; // Se usa para marcar que estas operaciones si o si utilizan/devuelven numeros de punto flotante, no enteros.
 struct pto{
     escalar x,y;
     pto() : x(0), y(0) {}
@@ -27,6 +28,22 @@ struct pto{
     floating norma() const { return hypot(x,y);} // hypot hace la cuenta de la hipotenusa mejor de lo que uno la hace de la manera obvia.
     pto normal() const { return pto(-y, x); } // El vector girado 90 grados en sentido antihorario, asumiendo sistema de coordenadas usual
     pto unitario() const { return (*this) / norma(); } // Vector unitario en la direccion de p
+    pto rotar(const pto &o, const pto &a) const { //rota p con centro en o para que a quede horizontal (hacia la derecha)
+        linea l = linea::por(o,a);
+        linea n = l.normalPor(o);
+        return o + pto(-n.distConSigno(*this) , l.distConSigno(*this));
+    }
+    pto rotarAngulo(floating angle) const { // En sentido antihorario
+        floating c = cos(angle), s = sin(angle);
+        return pto(x * c - y * s, x * s + y * c);
+    }
+    pto rotarAngulo(const pto &o, floating angle) const { return o + (*this - o).rotarAngulo(angle); }
+    // usa: define feq, pi //struct pto()
+    floating angulo() const { //[0,2pi) , asume que no es el origen
+        floating alpha = atan2(y,x);
+        if (alpha < 0.0) alpha += 2.0 * M_PI;
+        return alpha;
+    }
 };
 pto operator* (escalar a, const pto &p) { return p * k; }
 escalar distSqr(const pto &a, const pto &b) { return (a-b).normaSqr();}
@@ -130,115 +147,70 @@ struct circulo{
         if(feq(dd,c.r)) return TANGENTE;
         return (dd<c.r)? SECANTE:EXTERIOR;
     }
-    pair<pto,pto> interseccion(const linea &l){ // Asume que la recta no es exterior
+    pair<pto,pto> interseccion(const linea &l) const { // Asume que la recta no es exterior
         pto p = l.proyeccion(c);
         if(status(l)==TANGENTE) return make_pair(p,p);
         floating h = dist(p,c); pto dif = sqrt(r*r-h*h) * l.d.unitario();
         return make_pair(p+dif, p-dif);
     }
+    pair<pto,pto> tangencias(const pto &p) const { // Asume que el punto es exterior o tangente al circulo
+        floating dd = sqrt(distSqr(p,c.c)-c.r*c.r);
+        return interseccion(circulo(p, dd),c);
+    }
 };
+
+enum StatusCirculos {EXTERIORES, TANGENCIA_EXTERIOR, SECANTES, TANGENCIA_INTERIOR, CONTENIDA, CONCENTRICAS};
+
+int status(const circulo &c1, const circulo &c2){
+    floating dd = dist(c1.c, c2.c);
+    if(feq(dd,0.0)) return CONCENTRICAS;
+    floating R = max(c1.r,c2.r), r = min(c1.r,c2.r);
+    if(feq(dd,R+r)) return TANGENCIA_EXTERIOR;
+    if(dd > R+r) return EXTERIORES;
+    if(feq(dd+r,R)) return TANGENCIA_INTERIOR;
+    if((dd + r < R)) return CONTENIDA;
+    return SECANTES;
+}
+
+pair<pto,pto> interseccion(const circulo &c1, const circulo &c2){ // Asume que son tangentes o secantes
+    floating sqdist = distSqr(c1.c, c2.c);
+    floating mult = -(c2.r*c2.r-c1.r*c1.r-sqdist)/(2.0*sqdist);
+    return c1.interseccion(linea::por(c1.c, c2.c).normalPor(c1.c + mult*(c2.c-c1.c)));
+}
+
+typedef vector<pto> poligono;
+
+escalar areaPor2(const poligono& pol){ //El doble del area, con signo!!! Positiva para poligonos antihorarios.
+    escalar res = 0;
+    for(int i = 0, j = pol.size() -1; i < (int)pol.size(); j = i++)
+        res += pol[j]^pol[i];
+    return res;
+}
+
+floating ancho(poligono& pol){ // pol convexo y antihorario. Algoritmo lineal: encuentra para cada lado, el vertice mas lejano.
+    int n = pol.size();
+    if(n < 3) return 0;
+    floating res = HUGE_VAL;
+    for(int b = 0, a = n-1, cand = 1, far = 0; b < n; a = b++) {
+        segmento base(pol[a], pol[b]); pto v = base.recta().d;
+        while((v^(pol[cand]-pol[far])) >= 0) {far = cand++; cand %= n;}
+        res = min(res,  base.recta().dist(pol[far]));
+    }
+    return res;
+}
+
+bool isconvex(poligono& pol){ // n >= 3
+    bool mayor = false, menor = false;
+    int n = poly.size();
+    for(int i = n-1, prev = n-2, next = 0; next < n; prev = i, i = next++) {
+        escalar giro = (poly[next]-poly[i])^(poly[prev]-poly[i]);
+        mayor |= giro > 0; menor |= giro < 0;
+    }
+    return !(mayor && menor);
+}
 
 // FIN DE CODIGO DE NOTEBOOK
 
-//usa: difene feq,sqr // struct pto(), circle  // funcion dist
-int cantInterCC(circle c1, circle c2){
-    tipo dd = dist(c1.c, c2.c);
-    tipo R = max(c1.r,c2.r), r = min(c1.r,c2.r);
-    if(feq(dd,c1.r + c2.r) || feq(dd+r,R)) return 1;
-    return ((dd < c1.r + c2.r) && (dd > R-r))? 2:0;
-}
-//usa: difene feq,sqr // struct pto(^,-,+,*), circle, line  // operator *(tipo,pto)// funcion norma, cantInterLC, proyPL,dist,dist2,interLC
-pair<pto,pto> interCC(circle c1, circle c2){
-    tipo sqdist = dist2(c1.c, c2.c);
-    tipo mult = -(sqr(c2.r)-sqr(c1.r)-sqdist)/(2.0*sqdist);
-    line l;
-    l.s = c1.c + mult*(c2.c-c1.c);
-    l.d.x = c2.c.y - c1.c.y;
-    l.d.y = c1.c.x - c2.c.x;
-    return interLC(l,c1);
-}
-//usa: difene feq,sqr // struct pto(^,-,+,*), circle, line  // operator *(tipo,pto)// funcion norma, cantInterLC, proyPL,dist,dist2,interLC
-pair<pto,pto> tangente(pto p, circle c){
-    tipo dd = sqrt(dist2(p,c.c)-sqr(c.r));
-    circle cc; cc.c = p; cc.r = dd;
-    return interCC(cc,c);
-}
-\end{code}
-\newpage
-\subsection{Rotaci\'ones y \'Angulos}
-\begin{code}
-//usa: define sqr //struct pto(^,-,+), line // funcion norma,normal, distPL, Line
-pto rotar(pto o, pto a, pto p){ //rota p con centro en o para que a quede horizontal (hacia la derecha)
-    pto res;
-    line l = Line(o,a);
-    line n; n.s = o; n.d = normal(l);
-    res.y = distPL(p,l);
-    res.x = -1*distPL(p,n);
-    return o + res;
-}
-// usa: struct pto(+)
-pto rotarAngulo(pto o, pto p, tipo angle){
-    tipo c = cos(angle), s = sin(angle);
-    pto res;
-    res.x = (p-o).x * c - (p-o).y * s;
-    res.y = (p-o).x * s + (p-o).y * c;
-    return res + o;
-}
-
-#define pi acos(-1)
-// usa: define feq, pi //struct pto()
-tipo angulo(pto a){//[0,2pi) si a = 0 devuelve 3pi/2
-    if(!feq(a.x,0)){
-        tipo ang = atan(a.y/a.x);
-        if(a.x < 0) ang += pi;
-        if(ang < 0) ang += 2*pi;
-        return ang;
-    }
-    return (a.y > 0)? pi/2:(3.0/2)*pi;
-}
-\end{code}
-\newpage
-\subsection{Pol\'igonos}
-\begin{code}
-// usa: struct pto(-,^)
-tipo area(vector<pto>& poly){ //poligonos simples
-    if(poly.size() < 3) return 0;
-    tipo res = 0;
-    for(int i = 1; i < poly.size()-1; i++){
-        res += (poly[i]-poly[0])^(poly[i+1]-poly[0]);
-    }
-    return res/2;
-}
-// usa: define sqr // struct pto(-,^) // funcion dist
-tipo diameter(vector<pto>& poly){ //poly.size() > 1, poly convexo y antihorario
-    int n = poly.size();
-    if(n == 2) return dist(poly[0],poly[1]);
-    int i1 = 0, ii1 = n-1, i2 = 1, ii2 = 0;
-    tipo maxdist = 0;
-    while(i1 < n){
-        while(( (poly[i1]-poly[ii1])^(poly[i2]-poly[ii2]) ) >= 0){
-            maxdist = max(maxdist, dist(poly[ii1],poly[ii2]));
-            ii2 = i2;
-            i2 = (i2 < n-1)? i2+1:0;
-        }
-        maxdist = max(maxdist, dist(poly[ii1],poly[ii2]));
-        ii1 = i1++;
-    }
-    return maxdist;
-}
-
-// usa: struct pto(-,^)
-bool isconvex(vector<pto>& poly){
-    vector<bool>q(2);
-    int n = poly.size();
-    forn(i,n){
-        if(((poly[(i+1)%n]-poly[i])^(poly[(i+n-1)%n]-poly[i])) < 0) q[0] = true;
-        else if(((poly[(i+1)%n]-poly[i])^(poly[(i+n-1)%n]-poly[i])) > 0) q[1] = true;
-    }
-    return !(q[0]&&q[1]);
-}
-\end{code}
-\newpage
 \subsection{Convex Hull}
 \begin{code}
 // usa: define sqr // struct pto(-,^) // funcion dist2
