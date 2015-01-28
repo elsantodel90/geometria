@@ -82,7 +82,18 @@ struct segmento{
     floating longitud() const { return dist(f,t); }
     linea recta() const { return linea::por(f,t); }
     linea mediatriz() const { return recta().normalPor(0.5 * (f+t)); }
+    floating dist(const pto &p) const {
+        floating h = recta().dist(p), c = hypot(longitud(), h);
+        floating d1 = dist(f, p), d2 = dist(t, p);
+        if(b<EPSILON || c <= d1 || c <= d2)return min(d1, d2); else return h;
+    }
+
 };
+
+tdbl dist(seg a, seg b){
+	return (inter(a, b))?0.0:min(min(dist(a.f, b), dist(a.s, b)), min(dist(b.f, a), dist(b.s, a)));
+}
+
 
 int sgn(escalar a){ if(feq(a,0)) return 0; return (a>0)? 1:-1; }
 
@@ -468,34 +479,7 @@ tint cant_intersec(vector<pair<pto,pto> >&v){
   return ic;
 }
 \end{code}
-\subsection{Intersecci'on de segmentos}
-\begin{code}
-struct pto{tint x,y;};
-struct seg{pto f,s;};
-tint sgn(tint a){return a;return (a>0)?1:((a<0)?(-1):0);}
-tint pc(pto a, pto b, pto o){return (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);}
-tint pe(pto a, pto b, pto o){return (a.x-o.x)*(b.x-o.x)+(a.y-o.y)*(b.y-o.y);}
-bool inter(seg a, seg b){
-	tint ka = sgn(pc(a.f, a.s, b.f))*sgn(pc(a.f, a.s, b.s));
-	tint kb = sgn(pc(b.f, b.s, a.f))*sgn(pc(b.f, b.s, a.s));
-	if(ka<0 && kb<0)return true; //cruza sin tocar
-	if(ka==0 && (pe(a.f,a.s,b.f) <= 0 || pe(a.f,a.s,b.s) <= 0))return true; //b tiene un vertice en a
-	if(kb==0 && (pe(b.f,b.s,a.f) <= 0 || pe(b.f,b.s,a.s) <= 0))return true; //a tiene un vertice en b
-	return false;
-}
-\end{code}
-\subsection{Distancia entre segmentos}
-\begin{code}
-tdbl dist(pto p, seg s){
-	tdbl a = fabs(tdbl(pc(s.f, s.s, p)));
-	tdbl b = hypot(s.f.x-s.s.x,s.f.y-s.s.y),h=a/b, c = hypot(b, h);
-	tdbl d1 = hypot(s.f.x-p.x,s.f.y-p.y), d2 = hypot(s.s.x-p.x,s.s.y-p.y);
-	if(b<1e-10 || c <= d1 || c <= d2)return min(d1, d2); else return h;
-}
-tdbl dist(seg a, seg b){
-	return (inter(a, b))?0.0:min(min(dist(a.f, b), dist(a.s, b)), min(dist(b.f, a), dist(b.s, a)));
-}
-\end{code}
+
 \subsection{Cuentitas}
 \begin{code}
 usa: cmath, algorithm, tipo
