@@ -3,11 +3,15 @@
 
 using namespace std;
 
-// Clase pto: Recomendado cuando hay que ahorrar espacio, no ponerlo en el notebook. Es facil de programar (consiste fundamentalmente de maquinaria de C++)
+// INICIO DE CODIGO DE NOTEBOOK
+
+const floating epsilon = 1e-9;
+#define feq(a,b) (fabs((a)-(b)) < epsilon) // Se puede cambiar (cuando aplica) por la igualdad exacta si se usan operaciones en enteros.
+                                           // Asi como esta deberia producir codigo que funciona igualmente 
+                                           // (aunque se pasa a float para hacer la cuenta con epsilon al pedo).
 
 typedef long long escalar; // Escalar, puede ser de punto flotante, o tambien entero cuando los puntos y operaciones que hagamos nos mantienen en enteros.
 typedef long double floating; // Se usa para marcar que estas operaciones si o si utilizan/devuelven numeros de punto flotante, no enteros.
-
 struct pto{
     escalar x,y;
     pto() : x(0), y(0) {}
@@ -18,165 +22,124 @@ struct pto{
     escalar operator* (const pto& o) const { return x*o.x + y*o.y; }
     escalar operator^ (const pto& o) const { return x*o.y - y*o.x; }
     pto operator* (escalar k) const { return pto(k * x, k * y);}
-    escalar normaSqr() const { return x*x+y*y;}
+    pto operator/ (floating k) const { return pto(x / k, y / k);}
+    escalar normaSqr() const { return (*this)*(*this);} // TODO: Chequear que esto no compile si nos comemos alguno(s) de los asteriscos.
     floating norma() const { return hypot(x,y);} // hypot hace la cuenta de la hipotenusa mejor de lo que uno la hace de la manera obvia.
-    escalar distSqr() const { return (a-b).normaSqr();}
-    floating dist() const { return (a-b).norma();}
+    pto normal() const { return pto(-y, x); } // El vector girado 90 grados en sentido antihorario, asumiendo sistema de coordenadas usual
+    pto unitario() const { return (*this) / norma(); } // Vector unitario en la direccion de p
 };
 pto operator* (escalar a, const pto &p) { return p * k; }
+escalar distSqr(const pto &a, const pto &b) { return (a-b).normaSqr();}
+floating dist(const pto &a, const pto &b) { return (a-b).norma();}
 
-const floating epsilon = 1e-9;
-#define sqr(n) ((n)*(n))
+struct linea{
+    pto s, d; //p + lambda*d
+    linea() {}
+    linea(pto p, pto dd) : p(s), d(dd) {}
+    static linea por(const pto &a, const pto &b) const { return linea(a, b-a); } // linea::por(a,b)
+    linea normalPor(const pto &p) const { return linea(p, d.normal()); }
+    bool contiene(const pto &p) const { return feq(d ^ (p-s),0); }
+    floating dist(const pto &p) const { return fabs(distConSigno()); }
+    floating distConSigno(const pto &p) const { return (d ^ (p-s)) / d.norma(); }
+    pto proyeccion(const pto &p) const { return s + (((p-s)*d) / d.normaSqr()) * d; }
+};
 
-// INICIO DE CODIGO DE NOTEBOOK
+enum StatusRectas {PARALELAS, SECANTES, COINCIDENTES};
 
-#define feq(a,b) (fabs((a)-(b)) < epsilon)
+StatusRectas status(const linea &l1, const linea &l2){
+    if(!feq(l1.d^l2.d, 0)) return SECANTES;
+    if(feq(l1.d^(l2.s - l1.s), 0)) return COINCIDENTES;
+    return PARALELAS;
+}
 
+// Asume que las rectas son secantes, sino divide por cero.
+pto interseccion(const linea &l1, const linea &l2){
+    return l1.s + ( ((l2.s-l1.s)^l2.d) / (l1.d^l2.d) ) * l1.d;
+}
+
+struct segmento{
+    pto f, t;
+    segmento() {}
+    segmento(const pto &a, const pto &b) : f(a), t(b) {}
+    bool contiene(const pto &p) const { return feq((p-f)^(t-f),0) && (p-f)*(p-t)<=epsilon; }
+    floating longitud() const { return dist(f,t); }
+    linea recta() const { return linea::por(f,t); }
+    linea mediatriz() const { return recta().normalPor(0.5 * (f+t)); }
+};
+
+int sgn(escalar a){ if(feq(a,0)) return 0; return (a>0)? 1:-1; }
+
+// Equivale a que status(s1,s2) sea SE_CORTAN o SOLAPADOS. Hace todas las cuentas en enteros, si escalar es entero (notar que no usa epsilon ni feq directamente).
+bool hayInterseccion(const segmento &s1, const segmento &s2) {
+    #define signo_seg(s1,s2) sgn((s2.f-s1.f)^(s1.t-s1.f))*sgn((s2.t-s1.f)^(s1.t-s1.f))
+    int sgn1 = signo_seg(s1,s2), sgn2 = signo_seg(s2,s1);
+    if((sgn1 < 0 && sgn2 <= 0)||(sgn1 <= 0 && sgn2 < 0)) return true;
+    return sgn1 == 0 && sgn2 == 0 && (s2.contiene(s1.f) || s2.contiene(s1.t) || s1.contiene(s2.f) || s1.contiene(s2.t));
+}
+
+// Paralelos = En rectas paralelas distintas
+// Alineados = En la misma recta, con interseccion vacia
+// Se cortan = Exactamente un punto de interseccion
+// Solapados = Infinitos puntos de interseccion (estan en la misma recta y la interseccion es un segmento)
+// Nada = Caso restante (estan en rectas secantes pero los segmentos no se intersecan)
+enum StatusSegmentos {NADA, PARALELOS, ALINEADOS, SE_CORTAN, SOLAPADOS};
+
+StatusSegmentos status(const segmento &s1, const segmento &s2){
+    linea l1 = s1.recta(), l2 = s2.recta();
+    StatusRectas status = status(l1,l2);
+    if (status == PARALELAS) return PARALELOS;
+    if (status == SECANTES)
+    {
+        pto inter = interseccion(l1,l2);
+        return (s1.contiene(inter) && s2.contiene(inter)) ? SE_CORTAN : NADA;
+    }
+    floating f = (s2.f-s1.f)*(s1.t-s1.f)/norma2(s1.t-s1.f);
+    floating t = (s2.t-s1.f)*(s1.t-s1.f)/norma2(s1.t-s1.f);
+    if(f > t) swap(f,t);
+    floating dd = min(t,(tipo)1.0) - max(f,(tipo)0.0);
+    return feq(dd,0)? SE_CORTAN : (dd>0)? SOLAPADOS : ALINEADOS;
+}
+
+linea bisectriz(const pto &o,const pto &b,const pto &c) { return linea(o, dist(o,c)*(b-o)+dist(o,b)*(c-o)); }
+
+struct triangulo
+{
+    pto a,b,c;
+    triangulo() {}
+    triangulo(const pto &aa,const pto &bb, const pto &cc) : a(aa), b(bb), c(cc) {}
+    pto circuncentro() const { return interseccion(segmento(a,b).mediatriz(), segmento(a,c).mediatriz()); }
+    floating circunradio() const { return dist(a, circuncentro()); }
+    pto ortocentro() const {
+        return interseccion(linea::por(a, linea::por(b,c).proyeccion(a)),
+                            linea::por(b, linea::por(a,c).proyeccion(b))) }
+    pto baricentro() const { return (a+b+c) / 3.0; }
+    pto incentro() const { return interseccion(bisectriz(a,b,c), bisectriz(b,a, c)); }
+    floating perimetro() const { return dist(a,b) + dist(b,c) + dist(c,a); }
+    floating area() const { return 0.5 * fabs((b-a)^(c-a)); }
+    floating inradio(pto a, pto b, pto c) const { return 2 * area() / perimetro(); }
+};
+
+enum StatusLineaCirculo {EXTERIOR, TANGENTE, SECANTE};
+
+struct circulo{
+    pto c; floating r;
+    circulo() {}
+    circulo(const pto &cc, floating rr) : c(cc), r(rr) {}
+    StatusLineaCirculo status(const linea &l) const {
+        floating dd = l.dist(c);
+        if(feq(dd,c.r)) return TANGENTE;
+        return (dd<c.r)? SECANTE:EXTERIOR;
+    }
+    pair<pto,pto> interseccion(const linea &l){ // Asume que la recta no es exterior
+        pto p = l.proyeccion(c);
+        if(status(l)==TANGENTE) return make_pair(p,p);
+        floating h = dist(p,c); pto dif = sqrt(r*r-h*h) * l.d.unitario();
+        return make_pair(p+dif, p-dif);
+    }
+};
 
 // FIN DE CODIGO DE NOTEBOOK
 
-
-
-// ********* GEOMETRIA_GERMAN
-
-\end{code}
-\subsection{L\'inea}
-\begin{code}
-struct line{
-    pto s, d; //s + lambda*d
-};
-// usa: struct line, pto(-)
-line Line(pto a, pto b){
-    line res;
-    res.s = a;
-    res.d = b-a;
-    return res;
-}
-// usa: struct pto(), line
-pto normal(line l){
-    pto n;
-    n.x = -l.d.y;
-    n.y = l.d.x;
-    return n;
-}
-//usa: define sqr//struct pto(^,-), line // funcion norma
-tipo distPL(pto p, line l){//guarda con el signo
-    return (l.d^(p-l.s))/norma(l.d);
-}
-//usa: define sqr//struct pto(*,-,+), line // operator *(tipo,pto) // funcion norma
-pto proyPL(pto p, line l){
-    return l.s + ((p-l.s)*l.d)/norma2(l.d) * l.d;
-}
-//usa: define feq// struct pto(-,^), line
-int cantInterLL(line l1, line l2){ //infinitas -> 2
-    if(!feq(l1.d^l2.d, 0)) return 1;
-    if(feq(l1.d^(l2.s - l1.s), 0)) return 2;
-    return 0;
-}
-//usa: struct pto(+,-,^), line  // operator *(tipo,pto)
-pto interLL(line l1, line l2){
-    return l1.s + ( ((l2.s-l1.s)^l2.d) / (l1.d^l2.d) ) * l1.d;
-}
-\end{code}
-\newpage
-\subsection{Segmento}
-\begin{code}
-struct segment{
-    pto f, t;
-};
-//usa: define feq, epsilon// struct pto(-,^), segment
-bool ptoInSeg(pto p, segment s){
-    //return feq(dist(p,s.f) + dist(p,s.t), dist(s.f,s.t));
-   return feq((p-s.f)^(s.t-s.f),0) && (p-s.f)*(p-s.t)<=epsilon;
-}
-//usa: define feq
-int sgn(tipo a){
-    if(feq(a,0)) return 0;
-    return (a>0)? 1:-1;
-}
-//usa: define feq, epsilon// struct pto(-,^), segment // funcion sgn, ptoInSeg
-bool hayInterSS(segment s1, segment s2){
-    int sgn1 = sgn((s2.f-s1.f)^(s1.t-s1.f))*sgn((s2.t-s1.f)^(s1.t-s1.f));
-    int sgn2 = sgn((s1.f-s2.f)^(s2.t-s2.f))*sgn((s1.t-s2.f)^(s2.t-s2.f));
-    if((sgn1 < 0 && sgn2 <= 0)||(sgn1 <= 0 && sgn2 < 0)) return true;
-    if(sgn1 == 0 && sgn2 == 0)
-        return ptoInSeg(s1.f,s2) || ptoInSeg(s1.t,s2) || ptoInSeg(s2.f,s1) || ptoInSeg(s2.t,s1);
-    return false;
-}
-//usa: define feq, epsilon,sqr// struct pto(+,-,^,*), segment, line // funcion cantInterLL,interLL, norma2, ptoInSeg,Line
-int cantInterSS(segment s1, segment s2){ //infinitas -> 2
-    line l1, l2;
-    l1 = Line(s1.f, s1.t);
-    l2 = Line(s2.f, s2.t);
-    int cant = cantInterLL(l1,l2);
-    if(cant == 0) return 0;
-    if(cant == 1){
-        pto inter = interLL(l1,l2);
-        return (ptoInSeg(inter,s1) && ptoInSeg(inter,s2))? 1:0;
-    }
-    tipo f = (s2.f-s1.f)*(s1.t-s1.f)/norma2(s1.t-s1.f);
-    tipo t = (s2.t-s1.f)*(s1.t-s1.f)/norma2(s1.t-s1.f);
-    if(f > t) swap(f,t);
-    tipo dd = min(t,(tipo)1.0) - max(f,(tipo)0.0);
-    return feq(dd,0)? 1 : (dd>0)? 2:0;
-}
-\end{code}
-\newpage
-\subsection{Tri\'angulo}
-\begin{code}
-//usa: difene sqr // struct pto(+,-),line // funcion normal, Line
-pto circuncentro(pto a, pto b, pto c){
-    line l1, l2;
-    l1.s = (1.0/2)*(a+c); l1.d = normal(Line(a,c));
-    l2.s = (1.0/2)*(a+b); l2.d = normal(Line(a,b));
-    return interLL(l1,l2);
-}
-//usa: difene sqr // struct pto(-,^) // funcion dist
-tipo circunradio(pto a, pto b, pto c){
-    tipo sina = abs((b-a)^(c-a))/(dist(a,b)*dist(a,c));
-    return dist(b,c)/(2.0*sina);
-}
-//usa: difene sqr // struct pto(+,-,*,^),line // operator *(tipo,pto) // funcion norma, proyPL, Line,interLL
-pto ortocentro(pto a, pto b, pto c){
-    line l1 = Line(a, proyPL(a,Line(b,c)));
-    line l2 = Line(b, proyPL(b,Line(a,c)));
-    return interLL(l1,l2);
-}
-//usa: difene sqr // struct pto(+,-),line // operator *(tipo,pto) // funcion dist
-line bisectriz(pto o, pto b, pto c){
-    line l;
-    l.s = o;
-    l.d = dist(o,c)*(b-o)+dist(o,b)*(c-o);
-    return l;
-}
-//usa: difene sqr // struct pto(^,-) // funcion dist
-tipo inradio(pto a, pto b, pto c){
-    tipo p = (dist(a,b) + dist(b,c) + dist(c,a));
-    return abs(((b-a)^(c-a))/p);
-}
-\end{code}
-\newpage
-\subsection{C\'irculo}
-\begin{code}
-struct circle{
-    pto c;
-    tipo r;
-};
-//usa: difene feq, sqr // struct pto(^,-), line, circle // funcion distPL, norma
-int cantInterLC(line l, circle c){
-    tipo dd = abs(distPL(c.c, l));
-    if(feq(dd,c.r)) return 1;
-    return (dd<c.r)? 2:0;
-}
-
-//usa: difene feq, sqr // struct pto(^,-,+,*), line, circle  // operator *(tipo,pto) // funcion norma, cantInterLC, proyPL,dist
-pair<pto,pto> interLC(line l, circle c){
-    pto p = proyPL(c.c, l);
-    if(cantInterLC(l,c)==1)return make_pair(p,p);
-    tipo dd = sqrt(sqr(c.r)-sqr(dist(p,c.c)));
-    pto dif = (dd/norma(l.d))*l.d;
-    return make_pair(p+dif, p-dif);
-}
 //usa: difene feq,sqr // struct pto(), circle  // funcion dist
 int cantInterCC(circle c1, circle c2){
     tipo dd = dist(c1.c, c2.c);
