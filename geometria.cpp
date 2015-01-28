@@ -178,6 +178,8 @@ pair<pto,pto> interseccion(const circulo &c1, const circulo &c2){ // Asume que s
     return c1.interseccion(linea::por(c1.c, c2.c).normalPor(c1.c + mult*(c2.c-c1.c)));
 }
 
+enum StatusPuntoPoligono {EXTERIOR, FRONTERA, INTERIOR};
+
 struct poligono
 {
     vector<pto> v;
@@ -193,6 +195,15 @@ struct poligono
     }    
     escalar areaPor2() const { return abs(areaPor2ConSigno()); }
     bool antihorario() const { return areaPor2ConSigno() > 0; }
+    pto centroDeMasa() const { // En general, la idea para lograr calcular una integral sobre el poligono es llevarla al borde con teorema de Green.
+        escalar A = 0; pto cm(0,0);
+        for(int i = 0, j = n-1; i < n; j = i++) {
+            A += v[j]^v[i];
+            #define green_mix(x,y) (v[j].x*v[j].x + v[i].x*v[j].x + v[i].x*v[i].x) * (v[i].y - v[j].y)
+            cm.x += green_mix(x,y); cm.y -= green_mix(y,x);
+        }
+        cm.x /= (3 * A); cm.y /= (3 * A); return cm; // Notar que hasta aca podian ser todos enteros, y el centro de masa racional.
+    }
     floating ancho() const { // pol convexo y antihorario. Algoritmo lineal: encuentra para cada lado, el vertice mas lejano
         if(n < 3) return 0; // No se banca degenerados (todos alineados) con n > 2 (loop infinito)
         floating res = HUGE_VAL;
@@ -223,8 +234,18 @@ struct poligono
         }
         return !(mayor && menor);
     }
+    StatusPuntoPoligono status(const pto &p) const { // Esta escrito para coordenadas enteras, con floats habria que usar comparaciones estandar con EPS
+        unsigned i, j, m, M, c = 0;
+        for(i = 0, j = v.size()-1; i < v.size(); j = i++){
+            if(feq(dist(p,v[i])+dist(p,v[j]),dist(v[i],v[j]))) return FRONTERA; // Frontera debe manejarse aparte de esta forma
+            if((v[i].y <= p.y && p.y < v[j].y)||(v[j].y <= p.y && p.y < v[i].y)){
+                m = i; M = j; if(v[i].y > v[j].y) swap(m,M);
+                c ^= (((v[m]-p)^(v[M]-p)) > 0);
+            }
+        }
+        return c ? INTERIOR : EXTERIOR;
+    }
 };
-
 
 // CHULL
 
@@ -248,107 +269,55 @@ poligono chull(vector<pto> v) { // Devuelve la chull, sin puntos alineados, en s
   return ch;
 }
 
+// Par de puntos mas cercano.
+
+#define ord(n,a,b) bool n(const pto &p, const pto &q){return ((p.a==q.a)?(p.b<q.b):(p.a<q.a));}
+ord(cp_menorEnX,x,y) ord(cp_menorEnY,y,x)
+
+const int CLOSEST_PAIR_MAX_N = 110000;
+pto v [CLOSEST_PAIR_MAX_N]; // INPUT
+struct ClosestPair {
+    pto a,b; escalar d;
+    ClosestPair() : d(INF) {}
+    ClosestPair(const pto &p1, const pto &p2) : a(p1), b(p2), d(distSqr(p1,p2)) {}
+    void check(const pto &p1, const pto &p1) {
+        escalar newD = distSqr(p1, p2);
+        if (newD < d) { d = newD; a = p1; b = p2; }
+    }
+}
+ClosestPair cpair(int ini, int fin){
+  if(fin-ini <= 16) // Tuneable: como mucho impone un costo total N * 16 para los casos base
+  {
+      ClosestPair ret;
+      forsn(i, ini, fin) forsn(j, ini, i) ret.check(vx[i], vx[j]);
+      sort(v+ini, v+fin, cp_menorEnY);
+      return ret;
+  }
+  int m = (ini+fin)/2; escalar lineX = v[m].x;
+  ClosestPair res = cpair(ini,m); right = cpair(m,fin);
+  res.check(right.a, right.b);
+  static pto vy[CLOSEST_PAIR_MAX_N];
+  merge(v+ini, v+m, v+m, v+fin, vy + ini, cp_menorEnY);
+  forsn(i, ini, fin) v[i] = vy[i];
+  int T = ini;
+  forsn(t, ini, fin)
+  if ((vy[t].x - lineX)*(vy[t].x - lineX) < res.d)
+  {
+      for(int i = T-1; i >= ini && (vy[i].y - vy[t].y)*(vy[i].y - vy[t].y) < res.d; i--)
+          res.check(vy[i], vy[t]);
+      vy[T++] = vy[t];
+  }
+  return res;
+}
+ClosestPair closest_pair(int N){ // Asume que hay al menos dos puntos. Hace aritmetica con enteros si son puntos enteros.
+  sort(v, v+N,cp_menorEnX);
+  forsn(i, 1, N) if(v[i].x==v[i-1].x && v[i].y==v[i-1].y) return 0;
+  return cpair(0,N);
+}
+
+
 // FIN DE CODIGO DE NOTEBOOK
 
-\subsection{Convex Hull}
-\begin{code}
-// usa: define sqr // struct pto(-,^) // funcion dist2
-typedef vector<pto> VP;
-pto r;
-bool men2(const pto &p1, const pto &p2){
-  return (p1.y==p2.y)?(p1.x<p2.x):(p1.y<p2.y);
-}
-bool operator<(const pto &p1,const pto &p2){
-  tipo ar = (p1-r)^(p2-r);
-  return(ar==0)?(dist2(p1,r)<dist2(p2,r)):ar>0;
-  //< clockwise, >counterclockwise
-}
-
-VP chull(VP poly){
-  if(poly.size()<3) return poly;
-  r = *(min_element(poly.begin(),poly.end(),men2));
-  sort(poly.begin(),poly.end());
-  int i=0, s;
-  VP ch;
-  while(i<poly.size()){
-    s = ch.size();
-    if(s>1 && ((ch[s-1]-ch[s-2])^(poly[i]-ch[s-2]))<=0) //<0 conterclockwise, >0 clockwise, sin el = deja puntos colineares
-      ch.pop_back();
-    else
-      ch.push_back(poly[i++]);
-  }
-  return ch;
-}
-\end{code}
-\subsection{Point in Poly}
-\begin{code}
-// usa: define feq, sqr // struct pto(-,^) // funcion dist
-bool pnpoly(pto p, vector<pto>& v){
-    unsigned i, j, m, M, c = 0; // mirame!!!!!!! unsigned  y nada mas???/////////////////
-    for(i = 0, j = v.size()-1; i < v.size(); j = i++){
-        if(feq(dist(p,v[i])+dist(p,v[j]),dist(v[i],v[j]))) return true;
-        if((v[i].y <= p.y && p.y < v[j].y)||(v[j].y <= p.y && p.y < v[i].y)){
-            m = i; M = j; if(v[i].y > v[j].y) swap(m,M);
-            if(((v[m]-p)^(v[M]-p)) > 0) c^=1;
-        }
-    }
-    return c;
-}
-\end{code}
-
-// ********* FIN DE GEOMETRIA_GERMAN
-
-// ********* GEOMETRIA_PPP
-
-\section{Geom}
-\subsection{Point in Poly}\begin{code}
-usa: algorithm, vector
-struct pto { tipo x,y; };
-bool pnpoly(vector<pto>&v,pto p){
-  unsigned i, j, mi, mj, c = 0;
-  for(i=0, j = v.size()-1; i< v.size(); j = i++){
-    if((v[i].y<=p.y && p.y<v[j].y) ||
-       (v[j].y<=p.y && p.y<v[i].y)){
-      mi=i,mj=j; if(v[mi].y>v[mj].y)swap(mi,mj);
-      if((p.x-v[mi].x) * (v[mj].y-v[mi].y)
-       < (p.y-v[mi].y) * (v[mj].x-v[mi].x)) c^=1;
-    }
-  } return c;
-}
-\end{code}\subsection{Convex Hull}\begin{code}
-usa: algorithm, vector, sqr
-tipo pcruz(tipo x1,tipo y1,tipo x2,tipo y2){return x1*y2-x2*y1;}
-struct pto {
-  tipo x,y;
-  tipo n2(pto &p2)const{
-    return sqr(x-p2.x)+sqr(y-p2.y);
-  }
-} r;
-tipo area3(pto a, pto b, pto c){
-  return pcruz(b.x-a.x,b.y-a.y,c.x-a.x,c.y-a.y);
-}
-bool men2(const pto &p1, const pto &p2){
-  return (p1.y==p2.y)?(p1.x<p2.x):(p1.y<p2.y);
-}
-bool operator<(const pto &p1,const pto &p2){
-  tipo ar = area3(r,p1,p2);
-  return(ar==0)?(p1.n2(r)<p2.n2(r)):ar>0;
-  //< clockwise, >counterclockwise
-}
-typedef vector<pto> VP;
-VP chull(VP & l){
-  VP res = l;  if(l.size()<3) return res;
-  r = *(min_element(res.begin(),res.end(),men2));
-  sort(res.begin(),res.end());
-  tint i=0;VP ch;ch.push_back(res[i++]);ch.push_back(res[i++]);
-  while(i<res.size())  // area3 > clockwise, < counterclockwise
-    if(ch.size()>1 && area3(ch[ch.size()-2],ch[ch.size()-1],res[i])<=0)
-      ch.pop_back();
-    else
-      ch.push_back(res[i++]);
-  return ch;
-}
-\end{code}
 \subsection{Circulo m\'inimo}
 \begin{code}
 usa: algorithm, cmath, vector, pto (con < e ==)
@@ -399,6 +368,9 @@ circ minDisc(VP ps){ //ESTA ES LA QUE SE USA
   r.r=sqrt(r.r); return r;
 };
 \end{code}
+
+
+
 \subsection{M\'aximo rect\'angulo entre puntos}
 \begin{code}
 usa: vector, map, algorithm
@@ -442,144 +414,7 @@ tint masacre(){
   return marea;
 }
 \end{code}
-\subsection{M\'axima cantidad de puntos alineados}
-\begin{code}
-usa: algorithm, vector, map, set, forn, forall(typeof)
-struct pto {
-  tipo x,y;
-  bool operator<(const pto &o)const{
-    return (x!=o.x)?(x<o.x):(y<o.y);
-  }
-};
-struct lin{
-  tipo a,b,c;//ax+by=c
-  bool operator<(const lin& l)const{
-    return a!=l.a?a<l.a:(b!=l.b?b<l.b:c<l.c);
-  }
-};
-typedef vector<pto> VP;
-tint mcd(tint a, tint b){return (b==0)?a:mcd(b, a%b);}
-lin linea(tipo x1, tipo y1, tipo x2, tipo y2){
-  lin l;
-  tint d = mcd(y2-y1, x1-x2);
-  l.a = (y2-y1)/d;
-  l.b = (x1-x2)/d;
-  l.c = x1*l.a + y1*l.b;
-  return l;
-}
-VP v;
-typedef map<lin, int> MLI;
-MLI cl;
-tint maxLin(){
-  cl.clear();
-  sort(v.begin(), v.end());
-  tint m=1, acc=1;
-  forn(i, ((tint)v.size())-1){
-    acc=(v[i]<v[i+1])?1:(acc+1);
-    m>?=acc;
-  }
-  forall(i, v){
-    set<lin> este;
-    forall(j, v){
-    if(*i<*j||*j<*i)
-      este.insert(linea(i->x, i->y, j->x, j->y));
-    }
-    forall(l, este)cl[*l]++;
-  }
-  forall(l, cl){
-    m>?= l->second;
-  }
-  return m;
-}
-\end{code}
-%\newpage
-\subsection{Centro de masa y area de un pol\'igono}
-\begin{code}
-usa: vector, forn
-struct pto { tint x,y; };
-typedef vector<pto> poly;
-tint pcruz(tint x1, tint y1, tint x2, tint y2) { return x1*y2-x2*y1; }
-tint area3(const pto& p, const pto& p2, const pto& p3) {
-  return pcruz(p2.x-p.x, p2.y-p.y, p3.x-p.x, p3.y-p.y);
-}
-tint areaPor2(const poly& p) {
-  tint a = 0; tint l = p.size()-1;
-  forn(i,l-1) a += area3(p[i], p[i+1], p[l]);
-  return abs(a);
-}
-pto bariCentroPor3(const pto& p1, const pto& p2, const pto& p3) {
-  pto r;
-  r.x = p1.x+p2.x+p3.x; r.y = p1.y+p2.y+p3.y;
-  return r;
-}
-struct ptoD { double x,y; };
-ptoD centro(const poly& p) {
-  tint a = 0; ptoD r; r.x=r.y=0; tint l = p.size()-1;
-  forn(i,l-1) {
-    tint act = area3(p[i], p[i+1], p[l]);
-    pto pact = bariCentroPor3(p[i], p[i+1], p[l]);
-    r.x += act * pact.x; r.y += act * pact.y; a += act;
-  } r.x /= (3 * a); r.y /= (3 * a); return r;
-}
-\end{code}
-\subsection{Par de puntos mas cercano}
-\begin{code}
-usa algorithm, vector, tdbl, tint, tipo, INF, forn, cmath
-const tint MAX_N = 10010;
-struct pto { tipo x,y;} r;
-typedef vector<pto> VP;
-#define ord(n,a,b) bool n(const pto &p, const pto &q){ \
-  return ((p.a==q.a)?(p.b<q.b):(p.a<q.a));}
-#define sqr(a) ((a)*(a))
-ord(mx,x,y);
-ord(my,y,x);
-bool vale(const pto &p){return mx(p,r);};
-tipo dist(pto a,pto b){return sqr(a.x-b.x)+sqr(a.y-b.y);}
-pto vx[MAX_N];
-pto vy[MAX_N];
-tint N;
-tipo cpair(tint ini, tint fin){
-  if(fin-ini==1)return INF;
-  if(fin-ini==2)return dist(vx[ini], vx[ini+1]);
-  vector<pto> y(fin-ini);
-  copy(vy+ini, vy+fin, y.begin());
-  tint  m = (ini+fin)/2;
-  r = vx[m];
-  stable_partition(vy+ini, vy+fin, vale);
-  tipo d = min(cpair(ini, m), cpair(m, fin));
-  vector<pto> w;
-  forn(i, y.size())if(sqr(fabs(y[i].x-vx[m].x))<=d)w.push_back(y[i]);
-  forn(i,w.size()){
-    for(tint j=i+1;(j<(tint)w.size())
-      && sqr(fabs(w[i].y-w[j].y))<d;j++){
-      d<?=dist(w[i],w[j]);
-    }
-  }
-  return d;
-}
-tipo closest_pair(){
-  sort(vx, vx+N,mx);
-  sort(vy, vy+N,my);
-  for(tint i=1;i<N;i++){
-    if(vx[i].x==vx[i-1].x && vx[i].y==vx[i-1].y)return 0;
-  }
-  return sqrt(cpair(0,N));
-}
-\end{code}
-\subsection{CCW}
-\begin{code}
-struct point {tint x, y;};
-int ccw(const point &p0, const point &p1, const point &p2){
-    tint dx1, dx2, dy1, dy2;
-    dx1 = p1.x - p0.x; dy1 = p1.y - p0.y;
-    dx2 = p2.x - p0.x; dy2 = p2.y - p0.y;
-    if (dx1*dy2 > dy1*dx2) return +1;
-    if (dx1*dy2 < dy1*dx2) return -1;
-    if ((dx1*dx2 < 0) || (dy1*dy2 < 0)) return -1;
-    if ((dx1*dx1+dy1*dy1) < (dx2*dx2+dy2*dy2))return +1;
-    return 0;
-}
-\end{code}
+
 \subsection{Sweep Line}
 \begin{code}
 struct pto { tint x,y; bool operator<(const pto&p2)const{
