@@ -3,7 +3,7 @@
 
 using namespace std;
 
-// INICIO DE CODIGO DE NOTEBOOK
+// INICIO DE CODIGO DE GEOMETRIA
 
 typedef long long escalar; // Escalar, puede ser de punto flotante, o tambien entero cuando los puntos y operaciones que hagamos nos mantienen en enteros.
 typedef long double floating; // Se usa para marcar que estas operaciones si o si utilizan/devuelven numeros de punto flotante, no enteros.
@@ -28,6 +28,9 @@ struct pto{
     floating norma() const { return hypot(x,y);} // hypot hace la cuenta de la hipotenusa mejor de lo que uno la hace de la manera obvia.
     pto normal() const { return pto(-y, x); } // El vector girado 90 grados en sentido antihorario, asumiendo sistema de coordenadas usual
     pto unitario() const { return (*this) / norma(); } // Vector unitario en la direccion de p
+    pto proyectar(const pto &p) const { return ((p*d) / d.normaSqr()) * d; } // Proyecta sobre el nuestro
+    pto reflejar(const pto &p) const { return p - 2 * normal().proyectar(p); } // Refleja al otro vector usandonos como eje de simetria
+    pto simetrico(const pto &p) const { return 2 * (*this) - p; } // Simetrico de p con respecto a o
     pto rotar(const pto &o, const pto &a) const { //rota p con centro en o para que a quede horizontal (hacia la derecha)
         linea l = linea::por(o,a);
         linea n = l.normalPor(o);
@@ -55,10 +58,12 @@ struct linea{
     linea(pto p, pto dd) : p(s), d(dd) {}
     static linea por(const pto &a, const pto &b) const { return linea(a, b-a); } // linea::por(a,b)
     linea normalPor(const pto &p) const { return linea(p, d.normal()); }
+    linea paralelaPor(const pto &p) const { return linea(p, d); }
     bool contiene(const pto &p) const { return feq(d ^ (p-s),0); }
     floating dist(const pto &p) const { return fabs(distConSigno()); }
     floating distConSigno(const pto &p) const { return (d ^ (p-s)) / d.norma(); }
-    pto proyeccion(const pto &p) const { return s + (((p-s)*d) / d.normaSqr()) * d; }
+    pto proyeccion(const pto &p) const { return s + d.proyectar(p-s); }
+    pto reflejo(const pto &p) const { return s + d.reflejar(p-s); }
 };
 
 enum StatusRectas {PARALELAS, SECANTES, COINCIDENTES};
@@ -89,6 +94,16 @@ struct segmento{
     }
 
 };
+
+enum StatusLineaSegmento {NADA, PARALELO, SE_CORTAN, CONTENIDO};
+
+StatusLineaSegmento status(const linea &l, const segmento &s) {
+    linea r = s.recta(); StatusRectas stat = status(l, r);
+    if (stat == PARALELAS) return PARALELO;
+    if (stat == COINCIDENTES) return CONTENIDO;
+    if (s.contiene(interseccion(r, l))) return SE_CORTAN;
+    return NADA;
+}
 
 tdbl dist(seg a, seg b){
 	return (inter(a, b))?0.0:min(min(dist(a.f, b), dist(a.s, b)), min(dist(b.f, a), dist(b.s, a)));
@@ -137,14 +152,13 @@ struct triangulo
     triangulo(const pto &aa,const pto &bb, const pto &cc) : a(aa), b(bb), c(cc) {}
     pto circuncentro() const { return interseccion(segmento(a,b).mediatriz(), segmento(a,c).mediatriz()); }
     floating circunradio() const { return dist(a, circuncentro()); }
-    pto ortocentro() const {
-        return interseccion(linea::por(a, linea::por(b,c).proyeccion(a)),
-                            linea::por(b, linea::por(a,c).proyeccion(b))) }
+    pto ortocentro() const { return interseccion(linea::por(a, linea::por(b,c).proyeccion(a)),
+                                                 linea::por(b, linea::por(a,c).proyeccion(b))) }
     pto baricentro() const { return (a+b+c) / 3.0; }
     pto incentro() const { return interseccion(bisectriz(a,b,c), bisectriz(b,a, c)); }
+    floating inradio() const { return 2 * area() / perimetro(); } // O tambien, linea::por(a,b).dist(incentro())
     floating perimetro() const { return dist(a,b) + dist(b,c) + dist(c,a); }
     floating area() const { return 0.5 * fabs((b-a)^(c-a)); }
-    floating inradio(pto a, pto b, pto c) const { return 2 * area() / perimetro(); }
 };
 
 enum StatusLineaCirculo {EXTERIOR, TANGENTE, SECANTE};
@@ -327,7 +341,10 @@ ClosestPair closest_pair(int N){ // Asume que hay al menos dos puntos. Hace arit
 }
 
 
-// FIN DE CODIGO DE NOTEBOOK
+// FIN DE CODIGO DE GEOMETRIA
+
+
+
 
 \subsection{Circulo m\'inimo}
 \begin{code}
@@ -480,192 +497,7 @@ tint cant_intersec(vector<pair<pto,pto> >&v){
 }
 \end{code}
 
-\subsection{Cuentitas}
-\begin{code}
-usa: cmath, algorithm, tipo
-struct pto{tipo x,y;};
-struct lin{tipo a,b,c;};
-struct circ{pto c; tipo r;};
-#define sqr(a)((a)*(a))
-const double PI = (2.0 * acos(0.0));
-pto punto(tipo x, tipo y){pto r;r.x=x;r.y=y;return r;}
-const pto cero = punto(0,0);
-pto suma(pto o, pto s, tipo k){
-  return punto(o.x + s.x * k, o.y + s.y * k);
-}
-pto sim(pto p, pto c){return suma(c, suma(p,c,-1), -1);}
-pto ptoMedio(pto a, pto b){return punto((a.x+b.x)/2.0,(a.y+b.y)/2.0);}
-tipo pc(pto a, pto b, pto o){
-  return (b.y-o.y)*(a.x-o.x)-(a.y-o.y)*(b.x-o.x);
-}
-tipo pe(pto a, pto b, pto o){
-  return (b.x-o.x)*(a.x-o.x)+(b.y-o.y)*(a.y-o.y);
-}
-#define sqrd(a,b) (sqr(a.x-b.x)+sqr(a.y-b.y))
-tipo dist(pto a, pto b){return sqrt(sqrd(a,b));}
-//#define feq(a,b) (fabs((a)-(b))<0.000000000001) para interseccion
-#define feq(a,b) (fabs((a)-(b))<0.000000001)
-tipo zero(tipo t){return feq(t,0.0)?0.0:t;}
-bool alin(pto a, pto b, pto c){  return feq(0, pc(a,b,c));}
-bool perp(pto a1, pto a2, pto b1, pto b2){
-  return feq(0, pe(suma(a1, a2, -1.0), suma(b1, b2, -1.0), cero));
-}
-bool hayEL(tipo A11, tipo A12, tipo A21, tipo A22){
-  return !feq(0.0, A22*A11-A12*A21);
-}
-pto ecLineal(tipo A11, tipo A12, tipo A21, tipo A22, tipo R1, tipo R2){
-  tipo det = A22*A11-A12*A21;
-  return punto((A22*R1-A12*R2)/det,(A11*R2-A21*R1)/det);
-}
-lin linea(pto p1, pto p2){
-  lin l;
-  l.b = p2.x-p1.x;
-  l.a = p1.y-p2.y;
-  l.c = p1.x*l.a + p1.y*l.b;
-  return l;
-}
-bool estaPL(pto p, lin l){return feq(p.x * l.a + p.y * l.b, l.c);}
-bool estaPS(pto p, pto a, pto b){
-  return feq(dist(p,a)+dist(p,b),dist(b,a));
-}
-lin bisec(pto o, pto a, pto b){
-  tipo da = dist(a,o);
-  return linea(o, suma(a, suma(b,a,-1.0), da / (da+dist(b,o))));
-}
-bool paral(lin l1, lin l2){return !hayEL(l1.a, l1.b, l2.a, l2.b);}
-bool hayILL(lin l1, lin l2){ //!paralelas || misma
-  return !paral(l1,l2)|| !hayEL(l1.a, l1.c, l2.a, l2.c);
-}
-pto interLL(lin l1, lin l2){//li==l2->pincha
-  return ecLineal(l1.a, l1.b, l2.a, l2.b, l1.c, l2.c);
-}
-bool hayILS(lin l, pto b1, pto b2){
-  lin b = linea(b1,b2);
-  if(!hayILL(l,b))return false;
-  if(estaPL(b1,l))return true;
-  return estaPS(interLL(l,b), b1,b2);
-}
-pto interLS(lin l, pto b1, pto b2){
-  return interLL(l, linea(b1, b2));
-}
-pto interSS(pto a1, pto a2, pto b1, pto b2){
-  return interLS(linea(a1, a2), b1, b2);
-}
-bool hayISS(pto a1, pto a2, pto b1, pto b2){
-  if (estaPS(a1,b1,b2)||estaPS(a2,b1,b2)) return true;
-  if (estaPS(b1,a1,a2)||estaPS(b2,a1,a2)) return true;
-  lin a = linea(a1,a2), b = linea(b1, b2);
-  if(!hayILL(a,b))return false;
-  if(paral(a,b))return false;
-  pto i = interLL(a,b);
-  //sale(i);sale(a1);sale(a2);sale(b1);sale(b2);cout << endl;
-  return estaPS(i,a1, a2) && estaPS(i,b1,b2);
-}
-tipo distPL(pto p, lin l){
-  return fabs((l.a * p.x + l.b * p.y - l.c)/sqrt(sqr(l.a)+sqr(l.b)));
-}
-tipo distPS(pto p, pto a1, pto a2){
-  tipo aa = sqrd(a1, a2);
-  tipo d = distPL(p, linea(a1, a2));
-  tipo xx = aa+sqr(d);
-  tipo a1a1 = sqrd(a1, p);
-  tipo a2a2 = sqrd(a2, p);
-  if(max(a1a1, a2a2) > xx){
-    return sqrt(min(a1a1, a2a2));
-  }else{
-    return d;
-  }
-}
-//
-pto bariCentro(pto a, pto b, pto c){
-  return punto(
-    (a.x + b.x + c.x) / 3.0,
-    (a.y + b.y + c.y) / 3.0);
-}
-pto circunCentro(pto a, pto b, pto c){
-  tipo A = 2.0 * (a.x-c.x);tipo B = 2.0 * (a.y-c.y);
-  tipo C = 2.0 * (b.x-c.x);tipo D = 2.0 * (b.y-c.y);
-  tipo R = sqr(a.x)-sqr(c.x)+sqr(a.y)-sqr(c.y);
-  tipo P = sqr(b.x)-sqr(c.x)+sqr(b.y)-sqr(c.y);
-  return ecLineal(A,B,C,D,R,P);
-}
-pto ortoCentro(pto a, pto b, pto c){
-  pto A = sim(a, ptoMedio(b,c));
-  pto B = sim(b, ptoMedio(a,c));
-  pto C = sim(c, ptoMedio(b,a));
-  return circunCentro(A,B,C);
-}
-pto inCentro(pto a, pto b, pto c){
-  return interLL(bisec(a, b, c), bisec(b, a, c));
-}
-pto rotar(pto p, pto o, tipo s, tipo c){
-  //gira cw un angulo de sin=s, cos=c
-  return punto(
-    o.x + (p.x - o.x) * c + (p.y - o.y) * s,
-    o.y + (p.x - o.x) * -s + (p.y - o.y) * c
-  );
-}
-bool hayEcCuad(tipo a, tipo b, tipo c){//a*x*x+b*x+c=0 tiene sol real?
-  if(feq(a,0.0))return false;
-  return zero((b*b-4.0*a*c)) >= 0.0;
-}
-pair<tipo, tipo> ecCuad(tipo a, tipo b, tipo c){//a*x*x+b*x+c=0
-  tipo dx = sqrt(zero(b*b-4.0*a*c));
-  return make_pair((-b + dx)/(2.0*a),(-b - dx)/(2.0*a));
-}
-bool adentroCC(circ g, circ c){//c adentro de g sin tocar?
-  return g.r > dist(g.c, c.c) + c.r || !feq(g.r, dist(g.c, c.c) + c.r);
-}
-bool hayICL(circ c, lin l){
-  if(feq(0,l.b)){
-    swap(l.a, l.b);
-    swap(c.c.x, c.c.y);
-  }
-  if(feq(0,l.b))return false;
-  return hayEcCuad(
-    sqr(l.a)+sqr(l.b),
-    2.0*l.a*l.b*c.c.y-2.0*(sqr(l.b)*c.c.x+l.c*l.a),
-    sqr(l.b)*(sqr(c.c.x)+sqr(c.c.y)-sqr(c.r))+sqr(l.c)-2.0*l.c*l.b*c.c.y
-  );
-}
-pair<pto, pto> interCL(circ c, lin l){
-  bool sw=false;
-  if(sw=feq(0,l.b)){
-    swap(l.a, l.b);
-    swap(c.c.x, c.c.y);
-  }
-  pair<tipo, tipo> rc = ecCuad(
-    sqr(l.a)+sqr(l.b),
-    2.0*l.a*l.b*c.c.y-2.0*(sqr(l.b)*c.c.x+l.c*l.a),
-    sqr(l.b)*(sqr(c.c.x)+sqr(c.c.y)-sqr(c.r))+sqr(l.c)-2.0*l.c*l.b*c.c.y
-  );
-  pair<pto, pto> p(
-    punto(rc.first, (l.c - l.a * rc.first) / l.b),
-    punto(rc.second, (l.c - l.a * rc.second) / l.b)
-  );
-  if(sw){
-    swap(p.first.x, p.first.y);
-    swap(p.second.x, p.second.y);
-  }
-  return p;
-}
-bool hayICC(circ c1, circ c2){
-  lin l;
-  l.a = c1.c.x-c2.c.x;
-  l.b = c1.c.y-c2.c.y;
-  l.c = (sqr(c2.r)-sqr(c1.r)+sqr(c1.c.x)-sqr(c2.c.x)+sqr(c1.c.y)
-    -sqr(c2.c.y))/2.0;
-  return hayICL(c1, l);
- 
-}
-pair<pto, pto> interCC(circ c1, circ c2){
-  lin l;
-  l.a = c1.c.x-c2.c.x;
-  l.b = c1.c.y-c2.c.y;
-  l.c = (sqr(c2.r)-sqr(c1.r)+sqr(c1.c.x)-sqr(c2.c.x)+sqr(c1.c.y)
-    -sqr(c2.c.y))/2.0;
-  return interCL(c1, l);
-}
+
 
 // ********* FIN DE GEOMETRIA_PPP
 
