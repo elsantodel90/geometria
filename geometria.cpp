@@ -55,8 +55,8 @@ floating dist(const pto &a, const pto &b) { return (a-b).norma();}
 struct linea{
     pto s, d; //p + lambda*d
     linea() {}
-    linea(pto p, pto dd) : p(s), d(dd) {}
-    static linea por(const pto &a, const pto &b) const { return linea(a, b-a); } // linea::por(a,b)
+    linea(pto p, pto dd) : s(p), d(dd) {}
+    static linea por(const pto &a, const pto &b) { return linea(a, b-a); } // linea::por(a,b)
     linea normalPor(const pto &p) const { return linea(p, d.normal()); }
     linea paralelaPor(const pto &p) const { return linea(p, d); }
     bool contiene(const pto &p) const { return feq(d ^ (p-s),0); }
@@ -341,61 +341,42 @@ ClosestPair closest_pair(int N){ // Asume que hay al menos dos puntos. Hace arit
 }
 
 
-// FIN DE CODIGO DE GEOMETRIA
+// MINIMUM BOUNDING CIRCLE. Tiempo lineal esperado.
 
-
-
-
-\subsection{Circulo m\'inimo}
-\begin{code}
-usa: algorithm, cmath, vector, pto (con < e ==)
-usa: sqr, dist2(pto,pto), tint
-typedef double tipo;
-typedef vector<pto> VP;
-struct circ { tipo r; pto c; };
-#define eq(a,b) (fabs(a-b)<0.00000000000001)
-circ deIni(VP v){ //l.size()<=3
-  circ r;  sort(v.begin(), v.end()); unique(v.begin(), v.end());
+circulo mdisk_deIni(vector<pto> v){ //v.size()<=3
   switch(v.size()) {
-    case 0: r.c.x=r.c.y=0; r.r = -1; break;
-    case 1: r.c=v[0]; r.r=0; break;
-    case 2: r.c.x=(v[0].x+v[1].x)/2.0;
-        r.c.y=(v[0].y+v[1].y)/2.0;
-        r.r=dist2(v[0], r.c); break;
-    default: {
-      tipo A = 2.0 * (v[0].x-v[2].x);tipo B = 2.0 * (v[0].y-v[2].y);
-      tipo C = 2.0 * (v[1].x-v[2].x);tipo D = 2.0 * (v[1].y-v[2].y);
-      tipo R = sqr(v[0].x)-sqr(v[2].x)+sqr(v[0].y)-sqr(v[2].y);
-      tipo P = sqr(v[1].x)-sqr(v[2].x)+sqr(v[1].y)-sqr(v[2].y);
-      tipo det = D*A-B*C;
-      if(eq(det, 0)) {swap(v[1],v[2]); v.pop_back(); return deIni(v);}
-      r.c.x = ( D*R-B*P)/det;
-      r.c.y = (-C*R+A*P)/det;
-      r.r = dist2(v[0],r.c);
-    }
+    case 0: return circulo(pto(0,0), -1);
+    case 1: return circulo(v[0], 0);
+    case 2: return circulo(0.5 * (v[0] + v[1]) , 0.5 * dist(v[0], v[1])); break;
+    default:
+        triangulo tri(v[0], v[1], v[2]);
+        if(feq(tri.area(), 0)) {assert(false); swap(v[1],v[2]); v.pop_back(); return mdisk_deIni(v);} // Nunca deberia pasar esto... PPP lo tenia asi.
+        pto c = tri.circuncentro(); return circulo(c, dist(v[0],c));
   }
-  return r;
 }
-circ minDisc(VP::iterator ini,VP::iterator fin,VP& pIni){
-  VP::iterator ivp;
+circulo mdisk_minDisc(const pto *ini,const pto *fin, vector<pto>& pIni){
+  const pto *ivp;
   int i,cantP=pIni.size();
   for(ivp=ini,i=0;i+cantP<2 && ivp!=fin;ivp++,i++) pIni.push_back(*ivp);
-  circ r = deIni(pIni);
+  circulo r = mdisk_deIni(pIni);
   for(;i>0;i--) pIni.pop_back();
-  for(;ivp!=fin;ivp++) if (dist2(*ivp, r.c) > r.r){
+  for(;ivp!=fin;ivp++) if (dist(*ivp, r.c) > r.r){
     pIni.push_back(*ivp);
-    if (cantP<2) r=minDisc(ini,ivp,pIni);
-    else r=deIni(pIni);
+    if (cantP<2) r=mdisk_minDisc(ini,ivp,pIni);
+    else r=mdisk_deIni(pIni);
     pIni.pop_back();
   }
   return r;
 }
-circ minDisc(VP ps){ //ESTA ES LA QUE SE USA
-  random_shuffle(ps.begin(),ps.end()); VP e;
-  circ r = minDisc(ps.begin(),ps.end(),e);
-  r.r=sqrt(r.r); return r;
+circulo mdisk_minDisc(vector<pto> ps){ // ESTA ES LA QUE SE USA. Asume puntos distintos. Tiempo esperado lineal.
+  random_shuffle(ps.begin(),ps.end()); vector<pto> e;
+  return mdisk_minDisc(ps.data(),ps.data()+ps.size(),e);
 };
-\end{code}
+
+
+// FIN DE CODIGO DE GEOMETRIA
+
+
 
 
 
